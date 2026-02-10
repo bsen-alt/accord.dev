@@ -1,0 +1,196 @@
+import {
+  AlertTriangle,
+  BarChart3,
+  ShieldCheck,
+  Zap,
+  GitBranch,
+} from "lucide-react";
+
+# Impact Analysis: Predicting Change Consequences
+
+In a complex enterprise environment, changing a policy is risky. A single line change—changing `deny` to `allow`—could inadvertently grant sensitive permissions to thousands of users.
+
+ACCORD v1.3 introduces **Impact Analysis**: a mechanism to preview the consequences of a policy change before you save it.
+
+---
+
+## The Problem: The Blast Radius
+
+Consider this scenario:
+
+1.  You want to grant access to the "Finance Dashboard."
+2.  You write a policy allowing access to users with the `role: "finance"`.
+3.  **The Risk:** What if your Identity Provider (IdP) has mislabeled contractors as `role: "finance"`?
+4.  **The Result:** You just gave contractors access to your financial records.
+
+Without Impact Analysis, you wouldn't know about this disaster until the logs start burning.
+
+---
+
+## How It Works
+
+The Impact Analysis engine takes a **Draft Policy** and runs it against your current identity base to calculate the "Blast Radius."
+
+### The Algorithm
+
+1.  **Input:** You submit a draft policy (JSON) that hasn't been saved yet.
+2.  **Sampling:** To prevent database timeouts on large systems (e.g., 100,000 users), Accord samples a subset of identities (e.g., 1,000 users) or groups by role.
+3.  **Evaluation:** It runs the draft policy against these sampled identities.
+4.  **Calculation:** It aggregates the results:
+    - **Affected Users:** How many users match the policy?
+    - **Gains:** How many users who _previously couldn't_ perform the action now _can_?
+    - **Revocations:** How many users who _previously could_ perform the action now _cannot_? (Relevant if the new policy is more restrictive).
+
+---
+
+## The API
+
+You perform an analysis by sending a `POST` request to the Impact endpoint with your draft policy in the body.
+
+**Endpoint:** `POST /api/v1/policies/impact`
+
+```javascript
+const riskyPolicy = {
+  id: "open-access-logs",
+  version: "1.0",
+  effect: "allow",
+  subject: { type: "user" }, // Opens to EVERYONE
+  action: ["delete"],
+  resource: { type: "log" },
+};
+
+const analysis = await fetch("/api/v1/policies/impact", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(riskyPolicy),
+}).then((r) => r.json());
+```
+
+---
+
+## Interpreting the Report
+
+The analysis returns a detailed report object.
+
+### Sample Report
+
+```json
+{
+  "policyId": "open-access-logs",
+  "status": "warning",
+  "summary": {
+    "affectedIdentities": 1450,
+    "totalIdentities": 2000,
+    "impactPercentage": 72.5
+  },
+  "permissionsChange": {
+    "estimatedAccessGains": 1450,
+    "estimatedAccessRevocations": 0,
+    "affectedResources": ["logs/system", "logs/audit", "logs/finance"]
+  },
+  "riskScore": 92,
+  "recommendation": "High Risk: This policy grants delete access to logs to 72% of the organization. Consider narrowing the 'subject' scope."
+}
+```
+
+#### Key Metrics
+
+| Metric                     | Meaning                                                                                  |
+| :------------------------- | :--------------------------------------------------------------------------------------- |
+| **`affectedIdentities`**   | The number of users whose access status changes.                                         |
+| **`impactPercentage`**     | The percentage of your total user base affected. High numbers indicate a massive change. |
+| **`estimatedAccessGains`** | New "Yes" votes. If this is high, you are opening up a significant security hole.        |
+| **`riskScore`**            | A calculated score (0-100).                                                              |
+
+    *   **0-30:** Low Risk (Safe).
+    *   **31-70:** Medium Risk (Proceed with caution).
+    *   **71-100:** High Risk (Stop and review). |
+
+---
+
+## Use Case 1: The "Broadening" Mistake
+
+**Scenario:** You are configuring access to a new Analytics Dashboard. You want to make it easy to access, so you draft a policy that applies to all users.
+
+```javascript
+const draft = {
+  id: "analytics-view",
+  effect: "allow",
+  subject: { type: "user" }, // <--- The Risk
+  action: ["view"],
+  resource: { type: "analytics_dashboard" },
+};
+```
+
+**The Analysis:**
+
+- **Impact:** 100% of users affected.
+- **Gains:** 100% of users gain access.
+- **Resources:** `analytics_dashboard` (which contains sensitive data).
+- **Risk Score:** 95.
+- **Recommendation:** "This policy grants access to sensitive data to 100% of the organization. Consider narrowing the 'subject' to `type: 'manager'`."
+
+**Outcome:** You catch the mistake before deployment.
+
+---
+
+## Use Case 2: The "Revocation" Check
+
+**Scenario:** You need to lock down a sensitive API. You write a policy to revoke access for `role: 'user'` and only allow `role: 'admin'`.
+
+```javascript
+const draft = {
+  id: "admin-only-api",
+  effect: "allow",
+  subject: { attributes: { role: "admin" } }, // <--- Strict
+  action: ["write"],
+  resource: { type: "api_v2" },
+};
+```
+
+**The Analysis:**
+
+- **Impact:** 80% of users affected.
+- **Gains:** 0 (Only admins can already use it).
+- **Revocations:** High. All non-admin users lose `write` access.
+- **Risk Score:** 10 (This is intended behavior).
+
+**Outcome:** The analysis confirms the policy behaves as expected (Lockdown), and you deploy with confidence.
+
+---
+
+## Integration into CI/CD
+
+You can automate safety gates in your deployment pipeline using Impact Analysis.
+
+**The Workflow:**
+
+1.  Developer opens a Pull Request in Git.
+2.  The CI Pipeline runs `accord policy impact < policy_file.json>`.
+3.  If `riskScore > 50`, the build **fails**.
+4.  The developer must explain the risk in the PR comments.
+
+This ensures no single person can accidentally open a security hole.
+
+---
+
+## Performance & Sampling
+
+For enterprise-scale databases with millions of records, checking every identity is too slow (O(N)).
+
+ACCORD uses **Smart Sampling**:
+
+1.  If total users < 1,000: It checks everyone (Exact result).
+2.  If total users > 1,000: It checks the top 100 roles.
+3.  It projects the full impact based on role distribution.
+
+This gives you a **95% accurate** analysis in < 100ms, regardless of database size.
+
+---
+
+## Next Steps
+
+You've learned how to test logic with **Simulation** and predict outcomes with **Impact Analysis**. Now, learn how to visualize your permission structure.
+
+- **[Graph Visualization Guide](/learn/advanced/graph-visualization)**
+- **[Policy Rollback Guide](/learn/advanced/rollback)**

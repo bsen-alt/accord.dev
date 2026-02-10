@@ -1,0 +1,251 @@
+import {
+  GitBranch,
+  Zap,
+  ShieldCheck,
+  Network,
+  Play,
+  Database,
+  AlertTriangle,
+  ChevronRight,
+} from "lucide-react";
+
+# ACCORD v1.3 Release Notes
+
+**Release Date:** February 20, 2026
+**Theme:** Visibility, Control & Adoption
+
+---
+
+## Overview
+
+v1.1 was a library. v1.2 was a platform. **v1.3 is a control plane.**
+
+While v1.2 provided the engine and the server, v1.3 introduces the governance layer required to manage an enterprise authorization system. It shifts the focus from "running the engine" to "governing the policies."
+
+> **"ACCORD v1.3 transforms authorization from scattered code into a centralized, explainable control plane—without becoming an IdP or middleware."**
+
+---
+
+## New Features
+
+### 1. Authorization Playground (Simulation Engine)
+
+**Pillar 1: Safety First Development.**
+
+Before v1.3, testing a policy meant deploying it to staging, making a request, and hoping it works. v1.3 introduces a **Simulation Engine** via `POST /api/v1/simulate`.
+
+This endpoint allows you to evaluate policies against mock identities and contexts **without touching the database**. It is the "Sandbox Mode" for your security rules.
+
+**Example:**
+
+```javascript
+const mockUser = { id: "alice", role: "admin" };
+
+const decision = await accord.simulate(mockUser, "delete", { type: "invoice" });
+```
+
+**Why it matters:** You can now test dangerous changes (e.g., "Allow Managers to delete Invoices") without risking production outages.
+
+### 2. Policy Impact Analysis
+
+**Pillar 2: Predictive Safety.**
+
+Deploying a broad policy (e.g., `subject: type: 'user'`) is dangerous. Who does it affect?
+
+v1.3 adds `POST /api/v1/simulate` (Analysis Mode). It calculates the "Blast Radius" of a draft policy before you save it.
+
+**Report Output:**
+
+```json
+{
+  "affectedIdentities": 1450,
+  "estimatedAccessGains": 1450,
+  "estimatedAccessRevocations": 0,
+  "riskScore": 92
+}
+```
+
+**Why it matters:** It prevents "Blast Radius" surprises. If the risk score is high, you can fix the policy _before_ committing it.
+
+### 3. Lightweight Audit Stream (Webhooks)
+
+**Pillar 3: Replacing Guesswork with Evidence.**
+
+v1.3 introduces `WebhookAuditLogger` to push audit events to your observability stack (Splunk, Datadog) in real-time.
+
+**Configuration:**
+
+```javascript
+webhook: {
+  url: 'https://hooks.your-siem.com/webhook',
+  events: ['decision', 'policy_change', 'identity_provision']
+}
+```
+
+### 4. Visual Policy Graph API
+
+**Pillar 4: Making the Invisible Visible.**
+
+Complex permission structures (Roles -> Policies -> Resources) are hard to visualize mentally. v1.3 exposes `GET /api/v1/parsers/graph`.
+
+This returns a structured JSON response of **Nodes** and **Edges**, ready for visualization libraries (D3, C3, Cytoscape).
+
+**Response Structure:**
+
+```json
+{
+  "nodes": [
+    { "id": "user:alice", "type": "identity", "label": "Alice" },
+    {
+      "id": "role:admin",
+      "type": "role",
+      "markdownDescription": "Administrator with full system access."
+    }
+  ],
+  "edges": [
+    {
+      "source": "user:alice",
+      "target": "policy:p1",
+      "label": "member_of",
+      "type": "has_role"
+    }
+  ]
+}
+```
+
+### 5. Policy Versioning & Rollback
+
+**Pillar 5: The Safety Net.**
+
+Policies are now **immutable artifacts**. Saving a policy creates a new version. This brings two powerful capabilities:
+
+1.  **History:** See exactly who changed what, and when.
+2.  **Rollback:** If a new policy breaks production (e.g., typo in a subject), you can instantly revert to a previous version without a code deployment.
+
+**The CLI Command:**
+
+```bash
+accord policy rollback billing_policy_v2 --to 1.5
+```
+
+**Result:** Instant recovery. No server restarts required.
+
+### 6. Risk Signals (Context Enrichment)
+
+**Pillar 6: Context Awareness.**
+
+v1.3 enhances the `beforeDecision` hook to support risk evaluation.
+
+**Use Case:** Block access if the User's IP is from a high-risk location.
+
+**The Hook:**
+
+```javascript
+await Accord.create({
+  hooks: {
+    beforeDecision: async (ctx) => {
+      const riskScore = await FraudAPI.check(ctx.request.context.ip);
+      ctx.request.context.riskScore = riskScore;
+    },
+  },
+});
+```
+
+**The Policy:**
+
+```json
+{
+  "condition": "context.riskScore < 90"
+}
+```
+
+---
+
+## Breaking Changes & Migration
+
+v1.3 contains breaking changes aimed at long-term stability. Please review the following before upgrading.
+
+### 1. Private Constructor
+
+In v1.3, the `new Accord()` constructor is **private**. You must use the static `Accord.create()` method.
+
+**v1.2 Code (Broken in v1.3):**
+
+```javascript
+// This will throw an error
+const accord = new Accord({ adapter });
+```
+
+**v1.3 Code (Correct):**
+
+```javascript
+const accord = await Accord.create({ adapter });
+```
+
+**Why?** `create()` ensures the engine is fully initialized and policies are loaded before the instance is returned, preventing race conditions.
+
+### 2. Database Schema Update (Postgres Users)
+
+If you are using the `PostgresStoreAdapter`, you must run the migration script to support versioning.
+
+**The Command:**
+
+```bash
+psql $DATABASE_URL -f migrations/001_v13_versioning.sql
+```
+
+### 3. Interface Changes
+
+The `IStorageAdapter` interface has been expanded to support the new features.
+
+**New Methods:**
+
+- `getPolicyVersion(id, version)`
+- `listPolicyHistory(id)`
+- `clearPolicyHistory(id)`
+- `rollbackPolicy(id, targetVersion)`
+
+If you have implemented a custom `FileStoreAdapter`, you must implement these methods (even if they return empty arrays for file-based usage).
+
+---
+
+## Upgrading from v1.2
+
+If you are currently using Accord v1.2 (Library Mode), the upgrade is straightforward:
+
+1.  **Update the package:**
+    ```bash
+    npm install @navirorporated/accord@latest
+    ```
+2.  **Update Code:**
+    - Change `new Accord(...)` to `await Accord.create(...)`.
+3.  **Update Types:**
+    - Update `DecisionTrace` to match the v1.3 schema (includes `trace` object).
+4.  **Deploy:**
+    - Re-deploy your application.
+    - Patches are not required if you aren't using the Postgres adapter.
+
+If you are using Server Mode:
+
+1.  **Backup your database.**
+2.  **Run the migration script.**
+3.  **Restart the server.**
+4.  1.  Deploy the updated CLI and Server.
+
+---
+
+## Deprecations
+
+- **Implicit Policy Loading:** Relying on the file system to auto-reload policies is now deprecated in favor of explicit `reload()` calls or database polling.
+- **`new Accord()`**: The constructor is deprecated in favor of `Accord.create()`.
+
+---
+
+## Next Steps
+
+Explore the new capabilities to unlock the full potential of v1.3.
+
+- **[Deep Trace Guide](/learn/advanced/deep-trace)**
+- **[Impact Analysis Guide](/learn/advanced/impact-analysis)**
+- **[Policy Rollback Guide](/learn/advanced/rollback)**
+- **[Graph Visualization Guide](/learn/advanced/graph-visualization)**

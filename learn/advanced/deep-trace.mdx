@@ -1,0 +1,177 @@
+import { Activity, Eye, Clock, Zap, AlertCircle } from "lucide-react";
+
+# Deep Trace & Explainability
+
+In traditional authorization systems, a denied request often returns a generic `403 Forbidden` with no context. Was it a missing role? A bad database entry? Or a complex condition failure?
+
+Accord v1.3 solves this with the **Decision Trace**.
+
+Every access decision returns a complete execution log that tells you **exactly** how the engine arrived at `Allow` or `Deny`.
+
+---
+
+## Why Deep Traces Matter
+
+Security debugging is hard because authorization logic is often hidden inside application code. With Accord, you gain "White Box" visibility into the decision process.
+
+1.  **Debug Failures:** Instantly see _which_ policy blocked the user.
+2.  **Audit Compliance:** Provide proof of _why_ a user was allowed or denied.
+3.  **Performance Tuning:** Identify which policies are evaluated and optimize your rules.
+
+---
+
+## The Anatomy of a Trace
+
+When you call `accord.check()` or `accord.simulate()`, the return object extends beyond a simple boolean. Here is the structure:
+
+```json
+{
+  "decision": "deny",
+  "policy_id": "policy_x",
+  "reason": "Condition failed: amount > 10000",
+  "trace": {
+    "matchedPolicies": ["policy_z", "policy_y"],
+    "evaluatedPolicies": ["policy_x", "policy_z", "policy_y"],
+    "latencyMs": 1.2,
+    "resolvedAttributes": { "role": "user", "clearance": "low" }
+  }
+}
+```
+
+### Field Breakdown
+
+#### 1. `decision` & `policy_id`
+
+- **`decision`**: The final outcome (`allow` or `deny`).
+- **`policy_id`**: The ID of the specific policy that dictated the outcome. If `allow`, it's the matching allow rule. If `deny`, it's the specific deny rule that triggered the block (or `undefined` if no policies matched).
+
+#### 2. `reason`
+
+A human-readable explanation of the outcome. This is vital for log aggregation tools (Splunk, Datadog) so security analysts can understand events without parsing JSON.
+
+#### 3. `trace.matchedPolicies`
+
+A list of all policies that **successfully matched** the request context (Subject, Resource, Action).
+
+#### 4. `trace.evaluatedPolicies`
+
+A list of **all** policies the engine checked, regardless of the match. This is useful for performance tuning. If you see 100 policies in this list for a simple request, you might need to scope your `subject` or `resource` definitions better.
+
+#### 5. `trace.latencyMs`
+
+The time it took for Accord to evaluate the request. In v1.3, this is designed to be sub-millisecond (< 1ms) when using cached policies.
+
+#### 6. `trace.resolvedAttributes`
+
+The exact identity data that was used during evaluation. This reflects the user's state at that moment (e.g., `role: 'admin'`, `status: 'active'`).
+
+---
+
+## Scenario: Troubleshooting a Failed Request
+
+Imagine you receive a support ticket: _"User Alice cannot delete invoices, even though she is a Finance Manager."_
+
+Instead of guessing, we use the `accord.simulate` method with Alice's identity.
+
+### 1. The Request
+
+```javascript
+const result = await accord.simulate(
+  {
+    id: "alice",
+    type: "user",
+    status: "active",
+    attributes: { role: "finance_manager" },
+  },
+  "delete",
+  {
+    type: "invoice",
+    id: "inv_999",
+    attributes: { amount: 5000, status: "paid" },
+  },
+);
+```
+
+### 2. The Trace Output
+
+```json
+{
+  "decision": "deny",
+  "policy_id": "block-deleted-invoices",
+  "reason": "Explicit deny policy matched",
+  "trace": {
+    "matchedPolicies": ["block-deleted-invoices"],
+    "evaluatedPolicies": ["finance-manager-delete", "block-deleted-invoices"],
+    "latencyMs": 0.8,
+    "resolvedAttributes": {
+      "role": "finance_manager",
+      "status": "active"
+    }
+  }
+}
+```
+
+### 3. The Analysis
+
+Looking at the `matchedPolicies` and `policy_id`:
+
+- **The culprit is `block-deleted-invoices`.**
+- This policy has a higher priority or an explicit `effect: "deny"`.
+- Alice's `finance-manager-delete` policy _might_ have allowed her, but `block-deleted-invoices` explicitly said "No."
+
+### 4. The Fix
+
+We inspect the `block-deleted-invoices` policy and realize it was meant for all invoices, regardless of role. We update the subject to exclude `finance_manager`:
+
+```json
+{
+  "id": "block-deleted-invoices",
+  "subject": { "attributes": { "role": "finance_manager" }, "operator": "!=" } // Exclusion logic
+}
+```
+
+---
+
+## Performance Profiling with `evaluatedPolicies`
+
+If your Accord instance is handling high traffic (10,000+ RPS), you need to ensure your policies are efficient.
+
+Use the `evaluatedPolicies` list to spot "Chatty Policies."
+
+**Example:**
+If a request for `GET /user/profile` triggers 50 policy evaluations, but 48 of them are totally irrelevant (e.g., "Billing Admin" policies), you are wasting CPU cycles.
+
+**Solution:**
+Ensure your `subject` and `resource` definitions are as specific as possible.
+
+- _Bad:_ `subject: { type: 'user' }` (Matches EVERY user).
+- _Good:_ `subject: { type: 'user', attributes: { department: 'finance' } }` (Matches only finance users).
+
+---
+
+## Integration with Observability
+
+You can easily pipe the Decision Trace into your existing logging stack.
+
+```javascript
+const decision = await accord.check(userId, action, resource);
+
+// Log the full trace for audit
+logger.info({
+  event: "authorization_decision",
+  user: userId,
+  decision: decision.decision,
+  trace: decision.trace,
+});
+```
+
+This ensures that in your dashboards (Grafana, Datadog), you don't just see "Access Denied." You see the **full story**.
+
+---
+
+## Next Steps
+
+Deep Traces help you understand the _present_. To see the _future_, use Impact Analysis.
+
+- **[Impact Analysis Guide](/learn/advanced/impact-analysis)**
+- **[Policy Simulation Guide](/learn/getting-started/simulation)**

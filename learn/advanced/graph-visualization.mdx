@@ -1,0 +1,207 @@
+import { Network, Eye, GitBranch, AlertCircle, Share2 } from "lucide-react";
+
+# Graph Visualization
+
+Authorization logic can quickly become a tangled web of roles, users, and resources. Trying to understand the blast radius of a "Billing Admin" role by reading 50 JSON files is impossible.
+
+ACCORD v1.3 provides the **Graph API** to transform your authorization state into a visual map of **Nodes** and **Edges**, making the invisible visible.
+
+---
+
+## The Concept: Nodes and Edges
+
+The Graph API flattens your complex policy and identity structure into two simple lists: `nodes` and `edges`.
+
+### 1. Nodes (Entities)
+
+Nodes represent the "Actors" and "Objects" in your system.
+
+| Node Type    | ID Example    | Description                         |
+| :----------- | :------------ | :---------------------------------- |
+| **Identity** | `user:alice`  | A specific user or service account. |
+| **Role**     | `role:admin`  | A collection of permissions.        |
+| **Policy**   | `policy:p1`   | A specific rule definition.         |
+| **Resource** | `res:billing` | A protected asset or endpoint.      |
+
+### 2. Edges (Relationships)
+
+Edges are the connections between nodes.
+
+- **`has_role`**: `User -> Role`
+- **`applies_to`**: `Role -> Policy`
+- **`allows` / `denies`**: `Policy -> Resource`
+
+By connecting these, you can visualize the entire permission chain:
+
+> _"Alice has the Admin Role, which applies to Policy X, which allows access to the Billing API."_
+
+---
+
+## The API
+
+Accord generates the graph dynamically from your current policies and identities. You do not maintain a separate graph file; you simply fetch the current state.
+
+**Endpoint:** `GET /api/v1/policies/graph`
+
+**Response:**
+
+```json
+{
+  "nodes": [
+    { "id": "user:alice", "type": "identity", "label": "Alice" },
+    { "id": "role:admin", "type": "role", "label": "Admin" },
+    { "id": "res:billing", "type": "resource", "label": "Billing API" },
+    { "id": "policy:billing-write", "type": "policy", "label": "Billing Write" }
+  ],
+  "edges": [
+    {
+      "source": "user:alice",
+      "target": "role:admin",
+      "label": "member_of",
+      "type": "has_role"
+    },
+    {
+      "source": "role:admin",
+      "target": "policy:billing-write",
+      "label": "defined_in",
+      "type": "applies_to"
+    },
+    {
+      "source": "policy:billing-write",
+      "target": "res:billing",
+      "label": "allows",
+      "type": "allow"
+    }
+  ],
+  "meta": {
+    "totalNodes": 42,
+    "totalEdges": 85,
+    "isolatedNodes": 2
+  }
+}
+```
+
+---
+
+## Use Case 1: Visualizing "Who Has Access?"
+
+One of the most common security questions is: _"Who can delete production data?"_
+
+Using the Graph API, you can answer this visually.
+
+1.  **Fetch the Graph.**
+2.  **Filter Nodes:** Find the resource node `res:production_db`.
+3.  **Trace Backwards:**
+    - Look for edges pointing **TO** `res:production_db`.
+    - This points you to the `policy:prod-delete`.
+    - Look for edges pointing **TO** `policy:prod-delete`.
+    - This points you to the `role:dba`.
+    - Look for edges pointing **TO** `role:dba`.
+    - **Result:** You see a visual cluster of all users connected to that role.
+
+You can immediately verify that only the intended team members are clustered around the critical resource.
+
+---
+
+## Use Case 2: Dependency Analysis (Impact Visualization)
+
+When you delete or modify a policy, how does it affect the system?
+
+**Scenario:** You want to retire an old policy, but you aren't sure what it protects.
+
+1.  **Select the Policy Node:** (e.g., `policy:legacy-access`).
+2.  **Highlight Outgoing Edges:** Highlight all edges where `source == 'policy:legacy-access'`.
+3.  **Visual Result:**
+    - If you see 0 edges: The policy is "Dead" (Unused). It is safe to delete.
+    - If you see 50 edges connecting to `res:sensitive-data`: The policy is "Active". Deleting it breaks those access paths.
+
+This visual check prevents accidental deletion of critical safety controls.
+
+---
+
+## Integration with Visualization Libraries
+
+Accord provides the data; you provide the renderer. This keeps the core engine lightweight while allowing you to choose the best tool for your specific needs.
+
+### Using D3.js (Node.js/Web)
+
+```javascript
+import { forceSimulation, forceManyBodyDefaultForce } from "d3-force";
+import { scaleLinear, scalePoint } from "d3-scale";
+
+const graph = await fetch("/api/v1/policies/graph").then((r) => r.json());
+
+// Create the simulation
+const simulation = forceSimulation(graph.nodes, graph.links)
+  .force("charge", -300)
+  .force("link", 100);
+
+// Render
+const svg = d3
+  .select("#viz")
+  .append("svg")
+  .attr("viewBox", [0, 0, width, height])
+  .call(d3.zoom(simulation));
+```
+
+### Using Cytoscape.js (Advanced Interactivity)
+
+Cytoscape is ideal for interactive graphs where users can filter and move nodes.
+
+```javascript
+import cytoscape from "cytoscape";
+
+const graph = await fetch("/api/v1/policies/graph").then((r) => r.json());
+
+const cy = cytoscape({
+  container: document.getElementById("cy"),
+  elements: [
+    ...graph.nodes.map((n) => ({
+      data: { id: n.id, label: n.label, type: n.type },
+    })),
+    ...graph.edges.map((e) => ({
+      data: {
+        id: `${e.source}-${e.target}`,
+        source: e.source,
+        target: e.target,
+      },
+    })),
+  ],
+  style: [
+    {
+      selector: 'node[type="policy"]',
+      style: {
+        "background-color": "#666",
+        label: "data(label)",
+        color: "#fff",
+      },
+    },
+    {
+      selector: 'node[type="resource"]',
+      style: { "background-color": "#10b981", shape: "square" },
+    },
+  ],
+});
+```
+
+---
+
+## Why "Data-Only" API?
+
+In v1.3, we explicitly chose **not** to ship a UI for the graph. Why?
+
+1.  **Flexibility:** Your team might prefer D3.js, React Flow, or a proprietary dashboard. We give you the raw JSON to build whatever visualizer you want.
+2.  **Decoupling:** Visualization requirements (e.g., "I want to color nodes by department") change much faster than the core authorization engine. By separating them, you can update your dashboard without redeploying the authorization platform.
+3.  **Efficiency:** Calculating the graph is expensive. We provide an API endpoint so you can generate it on demand rather than keeping it in memory for every request.
+
+---
+
+## Summary
+
+The Graph API turns your abstract permissions into a concrete map. It bridges the gap between "System of Record" and "Human Understanding."
+
+**Next Steps:**
+Now that you have visualized your state, learn how to revert it when things go wrong.
+
+- **[Policy Rollback Guide](/learn/advanced/rollback)**
+- **[CLI Reference](/docs/cli/serve)**

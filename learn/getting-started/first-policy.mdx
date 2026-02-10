@@ -1,0 +1,157 @@
+import { FileCode, Zap, Play } from "lucide-react";
+
+# Creating Your First Policy
+
+In Accord, a **Policy** is a formal agreement that defines who can do what to which resources under specific conditions.
+
+Policies are declarative—written in JSON or YAML—and versioned. When you need to change access logic, you update the policy, not your application code.
+
+---
+
+## The Anatomy of a Policy
+
+Every policy in Accord follows a specific structure. Here is a breakdown of the key fields:
+
+| Field       | Type                | Description                                                            |
+| :---------- | :------------------ | :--------------------------------------------------------------------- |
+| `id`        | `string`            | A unique identifier for the policy (e.g., `billing-admin`).            |
+| `version`   | `string`            | The version of the policy (e.g., `1.0`). Required in v1.3.             |
+| `effect`    | `allow` \| `deny`   | The outcome if the policy matches.                                     |
+| `subject`   | `object`            | The actor. Defines attributes like `role`, `department`, or `id`.      |
+| `action`    | `string[]`          | The operation being attempted (e.g., `['delete', 'read']`).            |
+| `resource`  | `object`            | The target. Defines the type or attributes of the resource.            |
+| `condition` | `string` (Optional) | A logical expression using JSONata (e.g., `attributes.balance < 100`). |
+
+---
+
+## Example: Financial Access Control
+
+Let's create a policy for a common scenario:
+
+> **"Allow users with the 'finance' role to delete invoices, but only if the invoice amount is less than 10,000."**
+
+### 1. Define the Policy
+
+Create a file named `finance-policy.json`:
+
+```json
+{
+  "id": "finance-delete-invoice",
+  "version": "1.0",
+  "effect": "allow",
+  "subject": {
+    "type": "user",
+    "attributes": {
+      "role": "finance"
+    }
+  },
+  "action": ["delete"],
+  "resource": {
+    "type": "invoice"
+  },
+  "condition": "resource.attributes.amount < 10000"
+}
+```
+
+**Breakdown:**
+
+- **Subject:** Matches any user with `attributes.role === 'finance'`.
+- **Action:** Covers the `delete` operation.
+- **Resource:** Targets resources of type `invoice`.
+- **Condition:** Checks the invoice's `amount` attribute. If the amount is 10,000 or more, the policy will not match, and access will be denied (Default Deny).
+
+---
+
+## 2. Deploying the Policy
+
+You have two options for loading this policy into Accord:
+
+### Option A: File System (Local Development)
+
+If you are using the `FileStoreAdapter`, simply place the file in your configured directory (e.g., `./config/policies.json`).
+
+```javascript
+// In your application entry point
+const { Accord, FileStoreAdapter } = require("@navirondynamics/accord");
+
+const adapter = new FileStoreAdapter(
+  "./config/policies.json",
+  "./config/identities.json",
+);
+
+const accord = await Accord.create({ adapter });
+```
+
+### Option B: HTTP API (Server Mode)
+
+If you are running Accord as a centralized service, you can push the policy via the Management API.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/policies \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "finance-delete-invoice",
+    "version": "1.0",
+    "effect": "allow",
+    "subject": { "attributes": { "role": "finance" } },
+    "action": ["delete"],
+    "resource": { "type": "invoice" }
+  }'
+```
+
+The server will validate the schema and load the new policy immediately.
+
+---
+
+## 3. Testing Your Policy
+
+Before putting this into production, use the **v1.3 Simulation Engine** to verify the logic works as expected.
+
+```javascript
+// Create a mock user with the 'finance' role
+const financeUser = {
+  id: "user_123",
+  type: "user",
+  status: "active",
+  attributes: { role: "finance" },
+};
+
+// Create a mock resource (Invoice for $5,000)
+const smallInvoice = {
+  type: "invoice",
+  id: "inv_999",
+  attributes: { amount: 5000 },
+};
+
+// Run the simulation
+const result = await accord.simulate(financeUser, "delete", smallInvoice);
+
+console.log(result.decision); // 'allow'
+```
+
+Now, try simulating a **large invoice** ($15,000):
+
+```javascript
+const largeInvoice = {
+  type: "invoice",
+  id: "inv_888",
+  attributes: { amount: 15000 },
+};
+
+const result = await accord.simulate(financeUser, "delete", largeInvoice);
+
+console.log(result.decision); // 'deny'
+console.log(result.reason); // "No matching policy found" (Condition failed)
+```
+
+---
+
+## Next Steps
+
+Now that you have a policy defined and tested:
+
+1.  Learn about the **Deep Trace** to understand _why_ a decision was made.
+2.  Explore **Impact Analysis** to see how changes to this policy affect other users.
+
+- **[Deep Trace Guide](/learn/advanced/deep-trace)**
+- **[Impact Analysis Guide](/learn/advanced/impact-analysis)**

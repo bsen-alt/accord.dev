@@ -1,0 +1,121 @@
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ShieldCheck,
+  TerminalSquare,
+} from "lucide-react";
+
+# What is Accord?
+
+**Accord** is a policy-first identity and access platform for Node.js.
+
+It transforms authorization from scattered application logic—`if (user.role === 'admin')`—into a centralized, version-controlled system. By treating permissions as code, Accord acts as the **System of Record** for access control across your entire infrastructure.
+
+---
+
+## The Problem: Authorization Sprawl
+
+In modern applications, access control is often fragmented. You might have:
+
+1.  **Authentication** handled by Auth0 or Okta.
+2.  **User Data** stored in your database.
+3.  **Permissions** hardcoded in every single microservice (Express, NestJS, Fastify).
+
+When you need to change a security rule—like "Finance users can no longer delete invoices"—you have to find every service that handles invoices, update the code, run tests, and redeploy. This is slow, risky, and prone to errors.
+
+---
+
+## The Solution: The System of Agreement
+
+Accord centralizes this logic into a single **Governance Layer**. It answers one question with absolute certainty:
+
+> **"Should this identity be allowed to perform this action on this resource under these conditions?"**
+
+### How It Works
+
+1.  **Define:** You write your permissions as declarative policies (JSON or YAML).
+2.  **Centralize:** Your application asks Accord to make the decision.
+3.  **Enforce:** Accord returns a simple **Allow** or **Deny**.
+
+Your application code becomes agnostic to the rules. It just trusts Accord's decision.
+
+```javascript
+// Instead of this:
+if (user.role === "admin" && document.type === "invoice") {
+  deleteInvoice(id);
+}
+
+// You do this:
+const decision = await accord.check(user.id, "delete", {
+  type: "invoice",
+  id: "123",
+});
+
+if (decision.decision === "allow") {
+  deleteInvoice(id);
+}
+```
+
+````
+
+---
+
+## Core Capabilities (v1.3)
+
+Accord v1.3 introduces a suite of tools designed not just to _evaluate_ access, but to _govern_ it safely.
+
+### 1. Policy Simulation (Dry-Run)
+
+Before deploying a risky policy, you can test it safely in isolation.
+
+```javascript
+// Test without touching the database
+const result = await accord.simulate(mockUser, "delete", sensitiveResource);
+// Returns { decision: "deny", reason: "..." }
+```
+
+### 2. Policy Versioning & Rollback
+
+Policies are immutable artifacts. When you save a change, Accord keeps the history. If a new policy breaks production, you can instantly rollback to the previous version via CLI without redeploying code.
+
+### 3. Deep Explainability
+
+Every decision comes with a **Decision Trace**, showing exactly which policy matched, which attributes were used, and the latency of the evaluation.
+
+### 4. Visual Graph API
+
+You can export the entire permission structure as nodes and edges, enabling you to visualize "Who has access to what" using tools like D3.js or Cytoscape.
+
+---
+
+## Deployment Modes
+
+Accord is designed to fit seamlessly into your existing architecture.
+
+### Library Mode
+
+Embed Accord directly into your Node.js application (Express, NestJS, Fastify). It runs in-process for zero-latency decisions.
+
+### Server Mode (Platform)
+
+Run Accord as a standalone HTTP service. Your microservices call a central API endpoint (`POST /check`). This is ideal for heterogeneous environments (e.g., a Python service checking permissions against a Node.js Accord instance).
+
+---
+
+## Who is Accord For?
+
+- **Platform Engineers:** Who need to centralize governance across multiple microservices.
+- **Security Architects:** Who require audit trails, versioned policies, and rollback capabilities.
+- **Developers:** Who want to stop writing `if` statements and focus on business logic.
+
+---
+
+## Next Steps
+
+Ready to start governing access everywhere?
+
+1.  [Installation Guide](/learn/getting-started/installation)
+2.  [First Policy Tutorial](/learn/getting-started/first-policy)
+3.  [API Reference](/docs/api/accord)
+
+````

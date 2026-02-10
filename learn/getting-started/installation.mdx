@@ -1,0 +1,130 @@
+import {
+  CheckCircle2,
+  Server,
+  Terminal,
+  Database,
+  Download,
+} from "lucide-react";
+
+# Installation
+
+Accord is a Node.js platform. To get started, ensure your environment meets the requirements and install the package.
+
+---
+
+## Prerequisites
+
+- **Node.js:** v18.0.0 or higher (LTS recommended).
+- **Package Manager:** npm, yarn, or pnpm.
+- **Database (For Server Mode):** PostgreSQL 12+ (if using the `PostgresStoreAdapter`).
+
+---
+
+## Step 1: Install the Package
+
+Install the core Accord library using your preferred package manager.
+
+<Tabs>
+  <TabItem value="npm">```bash npm install @navirondynamics/accord ```</TabItem>
+  <TabItem value="yarn">```bash yarn add @navirondynamics/accord ```</TabItem>
+  <TabItem value="pnpm">```bash pnpm add @navirondynamics/accord ```</TabItem>
+</Tabs>
+
+---
+
+## Step 2: Choose Your Deployment Mode
+
+Accord can be utilized in two primary ways depending on your architecture:
+
+### A. Library Mode (Embedded)
+
+Best for: Single applications, microservices, or low-latency requirements.
+
+In Library Mode, you import Accord directly into your application code.
+
+**1. Initialize the Engine**
+
+In v1.3, we use the static `Accord.create()` method to ensure asynchronous initialization completes safely.
+
+```javascript
+const { Accord, PostgresStoreAdapter } = require("@navirondynamics/accord");
+
+const adapter = new PostgresStoreAdapter({
+  connectionString: process.env.DATABASE_URL,
+});
+
+const accord = await Accord.create({
+  adapter,
+  jit: { enabled: true, defaultStatus: "active" },
+});
+```
+
+**2. Perform an Access Check**
+
+```javascript
+const decision = await accord.check("alice", "delete", { type: "invoice" });
+
+if (decision.decision === "allow") {
+  // Execute protected logic
+}
+```
+
+---
+
+### B. Server Mode (Standalone)
+
+Best for: Heterogeneous environments, centralized governance, or multiple languages (e.g., Python app checking permissions via API).
+
+In Server Mode, Accord runs as a dedicated HTTP service.
+
+**1. Configure Environment**
+
+Create a `.env` file in your project root:
+
+```env
+DATABASE_URL=postgres://user:password@localhost:5432/accord
+PORT=8080
+JIT_ENABLED=true
+```
+
+**2. Run the Server**
+
+Start the governance engine using the CLI tool included in the package.
+
+```bash
+npx @navirondynamics/accord serve --adapter postgres --port 8080
+```
+
+The server will listen on port 8080. You can now make authorization requests via HTTP.
+
+```bash
+curl -X POST http://localhost:8080/api/v1/check \
+  -H "Content-Type: application/json" \
+  -d '{
+    "userId": "alice",
+    "action": "delete",
+    "resource": { "type": "invoice" }
+  }'
+```
+
+---
+
+## Storage Adapters
+
+Accord requires a storage adapter to persist policies and identities.
+
+| Adapter                  | Best For                                        | Persistence                     |
+| :----------------------- | :---------------------------------------------- | :------------------------------ |
+| **FileStoreAdapter**     | Local development, CI/CD pipelines, simple apps | JSON files on disk.             |
+| **PostgresStoreAdapter** | Production, Enterprise scale, versioning        | Postgres Database (with JSONB). |
+
+**Note on v1.3:** If you are upgrading from v1.2 to v1.3 using Postgres, you must run the provided database migration script to enable the new versioning features.
+
+---
+
+## Next Steps
+
+Now that Accord is installed, define your first policy.
+
+- **[Creating Your First Policy](/learn/getting-started/first-policy)**
+- **[API Reference](/docs/api/accord)**

@@ -1,0 +1,187 @@
+import { Play, ShieldCheck, Zap, Activity, Terminal } from "lucide-react";
+
+# Policy Simulation (Dry-Run Safety)
+
+In production, a failed authorization check can result in a 500 error, a corrupted database record, or a security breach.
+
+Accord v1.3 introduces the **Simulation Engine** to solve this. It allows you to test your policies against any scenario—dangerous or complex—without touching your database, users, or logs.
+
+---
+
+## What is Simulation?
+
+**Simulation** is a "Sandbox Mode" for authorization.
+
+Unlike `accord.check()`, which acts on real identities stored in your database, `accord.simulate()` accepts a **raw identity object** defined in your code. It runs the full evaluation engine but skips all side effects:
+
+- **No Database Writes:** No identity creation (JIT) is triggered.
+- **No Audit Logs:** The result is returned to you, not sent to your logging pipeline.
+- **Deterministic:** The result is purely based on the provided input.
+
+This makes it perfect for development, testing, and "What-If" analysis.
+
+---
+
+## How It Works: `simulate()` vs `check()`
+
+The key difference lies in the input.
+
+| Feature          | `accord.check()`           | `accord.simulate()`           |
+| :--------------- | :------------------------- | :---------------------------- |
+| **Input**        | `userId` (String)          | `identity` (Object)           |
+| **Resolution**   | Looks up user in DB/JIT    | Uses provided object directly |
+| **Side Effects** | Writes logs, updates stats | None                          |
+| **Best For**     | Production traffic         | Testing & Staging             |
+
+---
+
+## Usage: The API
+
+The `simulate` method signature is identical to `check`, except for the first argument.
+
+```typescript
+/**
+ * Simulate an access request safely.
+ * @param identity - The mock identity object.
+ * @param action - The action string.
+ * @param resource - The resource object.
+ * @param context - Optional context (IP, Time, Risk).
+ */
+await accord.simulate(identity, action, resource, context?)
+```
+
+---
+
+## Example 1: The "Before You Deploy" Test
+
+Imagine you are about to deploy a new policy that allows "Managers" to delete "Archived Projects." You want to make sure this doesn't accidentally allow deletion of "Active Projects."
+
+**The Code:**
+
+```javascript
+import { Accord, PostgresStoreAdapter } from "@navirondynamics/accord";
+
+const adapter = new PostgresStoreAdapter({
+  connectionString: process.env.DATABASE_URL,
+});
+const accord = await Accord.create({ adapter });
+
+// 1. Define the risky policy logic in code for testing
+// (In production, this would be loaded from DB)
+const riskyPolicyDraft = {
+  id: "manager-archives",
+  effect: "allow",
+  subject: { attributes: { role: "manager" } },
+  action: ["delete"],
+  resource: { type: "project" },
+};
+
+// 2. Create a Mock Identity (Manager)
+const manager = {
+  id: "alice",
+  type: "user",
+  status: "active",
+  attributes: { role: "manager" },
+};
+
+// 3. Create a Mock Resource (Active Project)
+const activeProject = {
+  type: "project",
+  id: "proj_1",
+  attributes: { status: "active" },
+};
+
+// 4. Run the simulation
+// Note: We aren't actually saving the policy, just simulating if it existed.
+const result = await accord.simulate(manager, "delete", activeProject);
+
+if (result.decision === "allow") {
+  console.error("Warning: This policy allows deletion of Active Projects!");
+  console.log("Trace:", result.trace);
+  // STOP. Do not deploy.
+}
+```
+
+**Result:**
+The simulation returns `deny` (assuming you have a deny policy for active projects). You fix your policy before deploying.
+
+---
+
+## Example 2: Testing Complex Conditions
+
+Simulation shines when testing conditional logic that depends on dynamic context, like IP location or Time of Day.
+
+**Scenario:** A policy should block access if the user's IP is from a high-risk country.
+
+```javascript
+const highRiskUser = {
+  id: "user_123",
+  type: "user",
+  status: "active",
+  attributes: { clearance: "top_secret" },
+};
+
+const resource = {
+  type: "document",
+  id: "nato-plans",
+};
+
+// Context Injection
+const context = {
+  ip: "192.168.1.50", // Simulate a high risk IP
+  time: new Date().toISOString(),
+};
+
+const result = await accord.simulate(highRiskUser, "view", resource, context);
+
+console.log(result.decision); // 'deny'
+console.log(result.reason); // "Condition 'geo != 'high-risk'' failed"
+```
+
+You can test thousands of IP addresses or timestamps in milliseconds within a loop to ensure your security rules are watertight.
+
+---
+
+## Use Cases
+
+### 1. CI/CD Testing
+
+Include `accord.simulate` in your automated tests to prevent regressions.
+
+```javascript
+test("Finance team cannot delete audit logs", async () => {
+  const result = await accord.simulate(mockFinanceUser, "delete", {
+    type: "audit_log",
+  });
+
+  expect(result.decision).toBe("deny");
+});
+```
+
+### 2. Security "What-If" Scenarios
+
+Your security team asks: _"If an admin's account is compromised, what is the blast radius?"_
+
+You can simulate the admin identity trying to access every resource in your system and generate an impact report without ever actually logging in as them.
+
+### 3. Playground Development
+
+You can build a "Policy Playground" UI for your team. Developers write policies in the UI, click "Simulate," and see the `Decision Trace` immediately, allowing them to iterate on logic without committing code.
+
+---
+
+## Performance Note
+
+Because `simulate` skips database lookups and audit logging, it is slightly faster than `check`. However, in most implementations, both operations run in the sub-millisecond range.
+
+**Pro Tip:**
+Use `simulate` for logic verification and `check` for real-world enforcement.
+
+---
+
+## Next Steps
+
+Now that you know how to test safely, learn how to see the **impact** of your changes before you make them.
+
+- **[Impact Analysis Guide](/learn/advanced/impact-analysis)**
+- **[Deep Trace Guide](/learn/advanced/deep-trace)**

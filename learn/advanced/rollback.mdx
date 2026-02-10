@@ -1,0 +1,169 @@
+import {
+  GitBranch,
+  RotateCcw,
+  ShieldAlert,
+  History,
+  Terminal,
+} from "lucide-react";
+
+# Policy Rollback
+
+In traditional software, if you push a broken configuration to production, you often have to redeploy the previous code. In complex microservices, this can be slow, risky, and stressful.
+
+ACCORD v1.3 solves this with **Policy Rollback**: the ability to instantly revert to a previous policy version without a code deployment.
+
+---
+
+## The Philosophy: Immutability
+
+To support rollback, Accord treats Policies as **Immutable Artifacts**.
+
+### v1.2 Behavior (Mutable)
+
+In v1.2, saving a policy updated the existing record in the database.
+
+- _Change:_ You change "Allow" to "Deny".
+- _Result:_ The old "Allow" state is lost forever. If you break access, you must manually rewrite the policy and redeploy.
+
+### v1.3 Behavior (Immutable)
+
+In v1.3, saving a policy creates a **New Version**.
+
+- _Change:_ You save `v1.1` (Broken).
+- _Result:_ `v1.1` is stored in history. `v1.0` (Good) remains intact.
+- _Recovery:_ You can instantly switch back to `v1.0`.
+
+---
+
+## The Scenario: The "Oops" Moment
+
+It happens. You deploy a policy intended to restrict access to "Archived Projects," but due to a typo in the subject definition, it accidentally applies to "Active Projects."
+
+**Result:** Your entire organization is locked out of active projects within seconds.
+
+With v1.3, you don't wake up the on-call engineer. You run one command to restore order.
+
+---
+
+## How to Rollback (CLI)
+
+The fastest way to recover is using the Accord CLI.
+
+### Step 1: Identify the Bad Version
+
+First, check the history of the problematic policy.
+
+```bash
+accord policy history billing_access
+```
+
+**Output:**
+
+```text
+> Policy: billing_access
+> 2.0 (Current - BROKEN) - 2026-02-20 14:00
+> 1.5 (Previous - STABLE) - 2026-01-15 09:00
+```
+
+### Step 2: Execute the Rollback
+
+Tell Accord to revert to the stable version (`1.5`).
+
+```bash
+accord policy rollback billing_access --to 1.5
+```
+
+**Output:**
+
+```text
+> [ACCORD CLI] Connecting to Governance Plane...
+> Target: billing_access
+> Rolling back from version 2.0 -> version 1.5
+
+> [SUCCESS] Rollback Complete
+> ---------------------------------
+> Policy ID:      billing_access
+> Previous Ver:   2.0 (Broken)
+> Restored Ver:   1.5 (Stable)
+> Database:       Committed
+> Cache:          Invalidated
+> Hot-Reload:     Triggered
+
+> System is now operating on v1.5. No restart required.
+```
+
+### What Happens Under the Hood?
+
+1.  **Validation:** Accord checks if version `1.5` exists.
+2.  **Re-Creation:** It fetches the content of `1.5` and creates a **new** version (e.g., `2.1`) that is identical to `1.5`.
+3.  **Hot-Reload:** It instructs the running server instances to reload their policy cache.
+4.  **Audit:** It logs the rollback event for compliance records.
+
+**Note:** We create a _new_ version (`2.1`) rather than deleting `2.0`. This preserves the full history of the error, which is crucial for forensic analysis and security audits.
+
+---
+
+## How to Rollback (API)
+
+If you are running Accord in Server Mode and want to build a custom dashboard for your security team, you can trigger rollback via the API.
+
+**Endpoint:** `POST /api/v1/policies/:id/rollback`
+
+**Request Body:**
+
+```json
+{
+  "version": "1.5"
+}
+```
+
+**Response:**
+
+```json
+{
+  "message": "Rolled back billing_access to version 1.5",
+  "currentVersion": "2.1"
+}
+```
+
+---
+
+## Operational Best Practices
+
+### 1. The "Safe Harbor" Version
+
+Maintain a "Safe Harbor" version for critical policies (e.g., "Allow Default Access").
+
+- Ensure this version is locked and cannot be overwritten by standard CI/CD scripts.
+- If the latest active policy causes outages, your playbooks should rollback to this known safe version.
+
+### 2. Rollback Time
+
+Rollback is fast, but not instant.
+
+1.  Database Write: ~10-50ms.
+2.  Propagation (Redis/Cache Invalidation): ~50-100ms.
+
+**Expectation:** Full recovery typically takes under 500ms for most enterprise deployments.
+
+### 3. Post-Mortem
+
+After rolling back, do not just delete the bad version.
+
+1.  Investigate why the bad version was approved.
+2.  Update the policy logic.
+3.  Publish a **new** version (e.g., `2.2`) that fixes the issue.
+
+This ensures the "bad state" is identified, fixed, and the audit trail remains intact.
+
+---
+
+## Summary
+
+Rollback transforms authorization changes from "risky actions" into "reversible experiments." It gives platform teams the confidence to iterate rapidly, knowing they have an instant undo button.
+
+**Next Steps:**
+Now that you know how to manage the lifecycle of your policies, ensure your infrastructure is configured to support Accord.
+
+- **[Server Mode Configuration](/docs/cli/serve)**
+- **[Postgres Adapter Setup](/docs/adapters/postgres)**
