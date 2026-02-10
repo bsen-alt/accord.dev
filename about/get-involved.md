@@ -1,10 +1,3 @@
----
-title: Get Involved
-description: Join a global community of developers, architects, and innovators shaping the future of system governance with Accord.
-author: Naviron Dynamics Team
-date: 2025-04-05
----
-
 # Get Involved
 
 Accord thrives because of its passionate and growing community. Whether you're a seasoned developer, curious student, or visionary leader, there’s a place for you here.

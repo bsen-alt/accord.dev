@@ -1,10 +1,3 @@
-title: Community Guidelines
-description: Learn how to participate in the Accord community, contribute effectively, and uphold our collaborative spirit.
-author: Naviron Dynamics Team
-date: 2025-04-05
-
----
-
 # Community Guidelines
 
 Welcome to the Accord community!

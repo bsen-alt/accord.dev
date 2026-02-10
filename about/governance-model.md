@@ -1,10 +1,3 @@
----
-title: Governance Model
-description: Learn how Accord is governed, who makes decisions, and how you can influence its evolution.
-author: Naviron Dynamics Team
-date: 2025-04-05
----
-
 # Governance Model
 
 Accord operates under a **transparent, meritocratic governance model** designed to balance inclusivity with efficiency. Decisions are made collaboratively, guided by technical excellence, community consensus, and long-term sustainability.

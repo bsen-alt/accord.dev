@@ -1,10 +1,3 @@
-title: Mission & Vision
-description: Learn about Accord’s guiding principles, long-term aspirations, and commitment to transforming system logic.
-author: Naviron Dynamics Team
-date: 2025-04-05
-
----
-
 # Mission & Vision
 
 ## Our Mission

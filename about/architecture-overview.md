@@ -1,13 +1,3 @@
-title: Architecture Overview
-
-description: Understand the core components and design philosophy behind Accord’s modular and scalable architecture.
-
-author: Naviron Dynamics Team
-
-date: 2025-04-05
-
----
-
 # Architecture Overview
 
 At its heart, **Accord** is designed around modularity, observability, and extensibility—enabling it to adapt seamlessly across diverse technology stacks while maintaining strict governance boundaries.

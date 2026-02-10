@@ -1,10 +1,3 @@
----
-title: Brand Assets
-description: Download official logos, color palettes, and visual guidelines for representing Accord consistently.
-author: Naviron Dynamics Team
-date: 2025-04-05
----
-
 # Brand Assets
 
 Want to showcase Accord in presentations, websites, or merchandise?

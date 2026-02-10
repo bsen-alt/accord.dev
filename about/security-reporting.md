@@ -1,10 +1,3 @@
----
-title: Security Reporting
-description: Learn how to responsibly report vulnerabilities in Accord and view our security track record.
-author: Naviron Dynamics Team
-date: 2025-04-05
----
-
 # Security Reporting
 
 At Accord, we take security seriously. While no system is ever completely immune to flaws, we are committed to identifying, addressing, and disclosing vulnerabilities responsibly.

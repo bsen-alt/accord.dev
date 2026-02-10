@@ -1,10 +1,3 @@
----
-title: About Accord
-description: Discover what Accord is, its origins, and how it transforms access control into a governed system layer.
-author: Naviron Dynamics Team
-date: 2025-04-05
----
-
 # About Accord
 
 Welcome to **Accord**, the architectural agreement layer redefining how systems govern access, enforce policies, and evolve securely in modern environments.
