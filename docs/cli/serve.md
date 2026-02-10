@@ -1,5 +1,3 @@
-import { Server, Database, Terminal, PlugZap, Globe } from 'lucide-react';
-
 # Server Mode Configuration
 
 **Server Mode** turns Accord from a library into a standalone HTTP service. It acts as a centralized "Governance Plane" that your applications—regardless of language—can query for authorization decisions.

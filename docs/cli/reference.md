@@ -1,5 +1,3 @@
-import { Terminal, Server, Database, FileJson, CheckCircle2, GitBranch, Play, Zap } from 'lucide-react';
-
 # CLI Reference
 
 The Accord CLI (`npx @navirondynamics/accord`) is the primary interface for operating the governance platform. It handles everything from starting the server to managing policy versions and validating syntax.

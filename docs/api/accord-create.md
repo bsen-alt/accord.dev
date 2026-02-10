@@ -1,5 +1,3 @@
-import { Database, Zap, CheckCircle2, ShieldCheck, Globe, Lock } from 'lucide-react';
-
 # `Accord.create()`
 
 In ACCORD v1.3, the `Accord` class constructor is **private**. To ensure the engine is fully initialized and ready to handle requests immediately, you must use the static `create()` factory method.

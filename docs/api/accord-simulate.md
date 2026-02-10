@@ -1,5 +1,3 @@
-import { Play, ShieldCheck, Zap, Activity, Terminal } from 'lucide-react';
-
 # `accord.simulate()`
 
 **`simulate`** allows you to evaluate authorization requests safely against a **Mock Identity** without touching your database or triggering audit logs. It is the "Sandbox Mode" for authorization.
